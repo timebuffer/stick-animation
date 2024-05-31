@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Stäbchen Experiment</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #input-container {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        button, input {
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="input-container">
+        <button id="drag-button">Drag Mode</button>
+        <button id="animate-button">Animate Mode</button>
+        <input type="text" id="letter-input" placeholder="Type letters and 'tb'" />
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Szene, Kamera und Renderer einrichten
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Licht hinzufügen
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(5, 10, 7.5);
+        scene.add(light);
+
+        // Bodenplatte erstellen
+        const planeGeometry = new THREE.PlaneGeometry(100, 100);
+        const planeMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 });
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        plane.rotation.x = - Math.PI / 2;
+        scene.add(plane);
+
+        // Eine Gruppe für die Stäbchen erstellen
+        const sticks = new THREE.Group();
+
+        // 3D-Gitternetz von Stäbchen erstellen und zur Gruppe hinzufügen
+        const stickGeometry = new THREE.BoxGeometry(0.5, 1, 0.5);
+        const stickMaterial = new THREE.MeshStandardMaterial({ color: 0x0077ff });
+
+        const gridSize = 100; // Größe des Gitternetzes
+        const spacing = 1; // Abstand zwischen den Stäbchen
+        const initialHeights = [1, 1.5, 2, 2.5, 3, 3.5, 4]; // Initiale Höhen für die 7 Bereiche
+
+        for (let i = 0; i < gridSize; i++) {
+            for (let j = 0; j < gridSize; j++) {
+                const stick = new THREE.Mesh(stickGeometry, stickMaterial);
+                stick.position.set(i * spacing - (gridSize * spacing) / 2, 0.5, j * spacing - (gridSize * spacing) / 2);
+                // Initiale Höhe basierend auf dem Bereich festlegen
+                const areaIndex = Math.floor(i / (gridSize / 7));
+                stick.scale.y = initialHeights[areaIndex];
+                sticks.add(stick);
+            }
+        }
+
+        scene.add(sticks);
+
+        // Kamera positionieren
+        camera.position.z = 120;
+        camera.position.y = 60;
+        camera.lookAt(0, 0, 0);
+
+        // Variablen für die Drag-Funktionalität
+        let isDragging = false;
+        let dragCoordinates = [];
+
+        // Zustand der Betriebsmodi
+        let mode = 'drag'; // 'drag' oder 'animate'
+        let animationPhase = 0;
+        let waveFrequency = 0.1;
+
+        // Ereignislistener für das Drücken der Maustaste
+        renderer.domElement.addEventListener('mousedown', (event) => {
+            if (mode === 'drag') {
+                isDragging = true;
+                dragCoordinates = [];
+            }
+        });
+
+        // Ereignislistener für das Loslassen der Maustaste
+        renderer.domElement.addEventListener('mouseup', (event) => {
+            if (mode === 'drag') {
+                isDragging = false;
+                shapeSticks(dragCoordinates);
+            }
+        });
+
+        // Ereignislistener für die Mausbewegung
+        renderer.domElement.addEventListener('mousemove', (event) => {
+            if (mode === 'drag' && isDragging) {
+                const mouse = new THREE.Vector2();
+                mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+                const raycaster = new THREE.Raycaster();
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObject(plane);
+                if (intersects.length > 0) {
+                    const intersect = intersects[0];
+                    const x = Math.floor((intersect.point.x + (gridSize * spacing) / 2) / spacing);
+                    const y = Math.floor((intersect.point.z + (gridSize * spacing) / 2) / spacing);
+                    if (x >= 0 && x < gridSize && y >= 0 && y < gridSize) {
+                        addThickLineCoordinates(x, y);
+                    }
+                }
+            }
+        });
+
+        // Funktion zur Hinzufügung dicker Linien
+        function addThickLineCoordinates(x, y) {
+            const thickness = 5; // Halber Durchmesser, ergibt eine Dicke von 10
+            for (let i = -thickness; i <= thickness; i++) {
+                for (let j = -thickness; j <= thickness; j++) {
+                    const newX = x + i;
+                    const newY = y + j;
+                    if (newX >= 0 && newX < gridSize && newY >= 0 && newY < gridSize) {
+                        dragCoordinates.push([newX, newY]);
+                    }
+                }
+            }
+        }
+
+        // Funktion zur Formanpassung der Stäbchen
+        function shapeSticks(coordinates) {
+            sticks.children.forEach((stick, index) => {
+                const i = Math.floor(index / gridSize);
+                const j = index % gridSize;
+
+                if (coordinates.some(coord => coord[0] === i && coord[1] === j)) {
+                    stick.scale.y = 3;
+                } else {
+                    // Initiale Höhe beibehalten
+                    const areaIndex = Math.floor(i / (gridSize / 7));
+                    stick.scale.y = initialHeights[areaIndex];
+                }
+            });
+        }
+
+        // Funktion zur Animation (Wellenbewegung in Kreisen)
+        function animateSticks() {
+            if (mode === 'animate') {
+                for (let i = 0; i < gridSize; i++) {
+                    for (let j = 0; j < gridSize; j++) {
+                        const stick = sticks.children[i * gridSize + j];
+                        const distance = Math.sqrt(Math.pow(i - gridSize / 2, 2) + Math.pow(j - gridSize / 2, 2));
+                        stick.scale.y = 1 + Math.sin(distance * waveFrequency + animationPhase) * 2;
+                    }
+                }
+                animationPhase += 0.1;
+            }
+        }
+
+        // Ereignislistener für den Drag-Button
+        document.getElementById('drag-button').addEventListener('click', () => {
+            mode = 'drag';
+        });
+
+        // Ereignislistener für den Animate-Button
+        document.getElementById('animate-button').addEventListener('click', () => {
+            mode = 'animate';
+            animationPhase = 0; // Zurücksetzen der Animation
+            sticks.children.forEach((stick, index) => {
+                const i = Math.floor(index / gridSize);
+                const areaIndex = Math.floor(i / (gridSize / 7));
+                stick.scale.y = initialHeights[areaIndex]; // Zurücksetzen der Stäbchen auf die initiale Höhe
+            });
+        });
+
+        // Funktion zur Ermittlung der Koordinaten für Buchstaben
+        function getLetterCoordinates(letter, offsetX, offsetY) {
+            const coordinates = [];
+            // Beispielhafte Koordinaten für Buchstaben
+            switch (letter) {
+                case 'A':
+                    coordinates.push([4 + offsetX, 7 + offsetY], [5 + offsetX, 6 + offsetY], [5 + offsetX, 8 + offsetY], [6 + offsetX, 5 + offsetY], [6 + offsetX, 9 + offsetY], [7 + offsetX, 4 + offsetY], [7 + offsetX, 10 + offsetY], [8 + offsetX, 3 + offsetY], [8 + offsetX, 11 + offsetY], [9 + offsetX, 2 + offsetY], [9 + offsetX, 12 + offsetY], [10 + offsetX, 1 + offsetY], [10 + offsetX, 13 + offsetY], [11 + offsetX, 0 + offsetY], [11 + offsetX, 14 + offsetY], [12 + offsetX, 1 + offsetY], [12 + offsetX, 13 + offsetY], [13 + offsetX, 2 + offsetY], [13 + offsetX, 12 + offsetY], [14 + offsetX, 3 + offsetY], [14 + offsetX, 11 + offsetY], [15 + offsetX, 4 + offsetY], [15 + offsetX, 10 + offsetY], [16 + offsetX, 5 + offsetY], [16 + offsetX, 9 + offsetY], [17 + offsetX, 6 + offsetY], [17 + offsetX, 8 + offsetY], [18 + offsetX, 7 + offsetY]);
+                    break;
+                case 'B':
+                    coordinates.push([4 + offsetX, 4 + offsetY], [5 + offsetX, 3 + offsetY], [6 + offsetX, 3 + offsetY], [7 + offsetX, 3 + offsetY], [8 + offsetX, 4 + offsetY], [8 + offsetX, 5 + offsetY], [8 + offsetX, 6 + offsetY], [7 + offsetX, 7 + offsetY], [6 + offsetX, 7 + offsetY], [5 + offsetX, 7 + offsetY], [4 + offsetX, 6 + offsetY], [4 + offsetX, 5 + offsetY], [4 + offsetX, 4 + offsetY], [4 + offsetX, 11 + offsetY], [5 + offsetX, 10 + offsetY], [6 + offsetX, 10 + offsetY], [7 + offsetX, 10 + offsetY], [8 + offsetX, 11 + offsetY], [8 + offsetX, 12 + offsetY], [8 + offsetX, 13 + offsetY], [7 + offsetX, 14 + offsetY], [6 + offsetX, 14 + offsetY], [5 + offsetX, 14 + offsetY], [4 + offsetX, 13 + offsetY], [4 + offsetX, 12 + offsetY], [4 + offsetX, 11 + offsetY]);
+                    break;
+                // Weitere Buchstaben hinzufügen
+                default:
+                    break;
+            }
+            return coordinates;
+        }
+
+        // Ereignislistener für die Eingabe
+        document.getElementById('letter-input').addEventListener('keyup', (event) => {
+            if (event.target.value.endsWith('tb')) {
+                const letter = event.target.value.slice(-3, -2).toUpperCase();
+                const offsetX = currentLetterIndex * 30; // Platzierung der Buchstaben auf der Platte
+                const offsetY = 0; // Standard-Y-Versatz
+                const newCoordinates = getLetterCoordinates(letter, offsetX, offsetY);
+                letterCoordinates = letterCoordinates.concat(newCoordinates);
+                shapeSticks(letterCoordinates);
+                currentLetterIndex++;
+                event.target.value = ''; // Eingabefeld leeren
+            }
+        });
+
+        // Animationsfunktion
+        function animate() {
+            requestAnimationFrame(animate);
+            animateSticks();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
